@@ -13,7 +13,7 @@ const ALLOWED_CHAT_IDS = [
 // === ТОХИРУУЛГА ===
 const BOT_TOKEN = '8108084322:AAEfmQq8uxTlE0L9t3SOQOlIIzQmZ8JwAdI';
 const SPREADSHEET_ID = '1qbxJsI4Ns3a8lluxlRZl5r5AKHA3hp9yS7YZLwY469A';
-const SHEET_NAME = 'Transactions'; 
+const SHEET_NAME = 'Transactions';
 // A:№, B:Огноо, C:Тайлбар, D:Дүн, E:Өртөг ханш, F:Timestamp, G:Статус
 
 // === GOOGLE SHEETS AUTH ===
@@ -33,6 +33,17 @@ auth.getClient()
 // === TELEGRAM BOT ===
 const bot = new Telegraf(BOT_TOKEN);
 
+// ==== ГЛОБАЛ АЛДАА БАРИГЧ ====
+bot.catch((err, ctx) => {
+  console.error('Telegraf error:', err);
+});
+
+// Чат бүрийн төлөв (огноо, давхар мессежээс хамгаална)
+const state = {
+  currentDate: {}, // chatId -> date string (2025.12.05)
+  lastMsgId: {},   // chatId -> last message_id
+};
+
 // === БҮХ МЕССЕЖИЙН ӨМНӨ WHITELIST ШАЛГАНА (НИЙТД НЭГ Л УДАА) ===
 bot.use(async (ctx, next) => {
   const chatId = ctx.chat && ctx.chat.id ? String(ctx.chat.id) : null;
@@ -45,25 +56,6 @@ bot.use(async (ctx, next) => {
 
   return next();
 });
-
-// Чат бүрийн төлөв (огноо, давхар мессежээс хамгаална)
-const state = {
-  currentDate: {}, // chatId -> date string (2025.12.05)
-  lastMsgId: {},   // chatId -> last message_id
-};
-
-const bot = new Telegraf(BOT_TOKEN);
-
-// ==== ГЛОБАЛ АЛДАА БАРИГЧ ====
-bot.catch((err, ctx) => {
-  console.error('Telegraf error:', err);
-});
-
-// Чат бүрийн төлөв
-const state = {
-  currentDate: {}, 
-  lastMsgId: {}
-};
 
 // === ТУСЛАХ ФУНКЦУУД ===
 
@@ -523,10 +515,7 @@ bot.on('photo', async (ctx) => {
         return;
       }
 
-      let rateStr = caption
-        .match(/Өртөг ханш[:\s]+([\d\.,]+)/i)[1]
-        .replace(/\s+/g, '')
-        .replace(',', '.');
+      let rateStr = rateMatch[1].replace(/\s+/g, '').replace(',', '.');
 
       await updateRateForDate(currentDate, rateStr);
       await ctx.reply(`Өртөг ханш ${rateStr} гэж тохирууллаа ✅`);
@@ -583,9 +572,14 @@ bot.on('callback_query', async (ctx) => {
 });
 
 // === БОТЫГ АСГАХ ===
-bot.launch();
-console.log('Bot started...');
+(async () => {
+  try {
+    await bot.launch();
+    console.log('Bot started...');
+  } catch (err) {
+    console.error('Bot launch error:', err);
+  }
+})();
 
-bot.launch();
-console.log('Bot started...');
-
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
