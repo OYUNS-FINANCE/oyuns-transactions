@@ -8,13 +8,14 @@ const http = require('http'); // Render-д зориулсан жижиг HTTP se
 // Группийн chat ID: -1003019837728
 const ALLOWED_CHAT_IDS = [
   '1920453419',
+  '1447446407',
   '-1003019837728',
 ];
 
 // === ТОХИРУУЛГА ===
 const BOT_TOKEN = '8108084322:AAEfmQq8uxTlE0L9t3SOQOlIIzQmZ8JwAdI';
 const SPREADSHEET_ID = '1qbxJsI4Ns3a8lluxlRZl5r5AKHA3hp9yS7YZLwY469A';
-const SHEET_NAME = 'Transactions'; 
+const SHEET_NAME = 'Transactions';
 // A:№, B:Огноо, C:Тайлбар, D:Дүн, E:Өртөг ханш, F:Timestamp, G:Статус
 
 // === GOOGLE SHEETS AUTH ===
@@ -42,7 +43,6 @@ bot.catch((err, ctx) => {
 // Чат бүрийн төлөв
 const state = {
   currentDate: {}, // chatId -> date string (2025.12.05)
-  lastMsgId: {},   // chatId -> last message_id
 };
 
 // === WHITELIST MIDDLEWARE (НИЙТД НЭГ УДАА) ===
@@ -100,13 +100,11 @@ async function getAllRows() {
   return rows;
 }
 
-// Мөр нэмэх (default статус: Хүлээгдэж буй), мөрийн дугаар буцаана
+// Мөр нэмэх (default статус: Хүлээгдэж буй), ЯГ БОДИТ rowIndex-ийг буцаана
 async function appendTransactionRow(date, number, description, amount, status = 'Хүлээгдэж буй') {
-  const rows = await getAllRows();
-  const rowIndex = rows.length + 1; // 1-based (шинэ мөрний индекс)
-
   const timestamp = new Date().toISOString();
-  await sheets.spreadsheets.values.append({
+
+  const res = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${SHEET_NAME}!A:G`,
     valueInputOption: 'USER_ENTERED',
@@ -114,6 +112,16 @@ async function appendTransactionRow(date, number, description, amount, status = 
       values: [[number, date, description, amount, '', timestamp, status]],
     },
   });
+
+  // Google Sheets API буцааж өгдөг range-ээс мөрийн дугаар авах (ж: 'Transactions!A15:G15')
+  let rowIndex = null;
+  const updates = res.data && res.data.updates;
+  if (updates && updates.updatedRange) {
+    const m = updates.updatedRange.match(/![A-Z]+(\d+):/);
+    if (m && m[1]) {
+      rowIndex = parseInt(m[1], 10);
+    }
+  }
 
   return rowIndex;
 }
@@ -150,6 +158,7 @@ async function updateRateForDate(date, rate) {
 
 // G баганад статус бичих (Амжилттай / Хүлээгдэж буй / Цуцласан)
 async function updateStatus(rowIndex, statusText) {
+  if (!rowIndex) return;
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range: `${SHEET_NAME}!G${rowIndex}`,
@@ -360,17 +369,12 @@ bot.command('general', async (ctx) => {
 bot.on('text', async (ctx, next) => {
   try {
     const chatId = String(ctx.chat.id);
-    const msgId = ctx.message.message_id;
     const text = ctx.message.text.trim();
 
     // Хэрвээ команд байвал (/loading, /general г.м) -> цааш дамжуулна
     if (text.startsWith('/')) {
       return next();
     }
-
-    // Давхар ирсэн update-ыг шүүх
-    if (state.lastMsgId[chatId] === msgId) return;
-    state.lastMsgId[chatId] = msgId;
 
     // 1) ОГНОО МЕССЕЖ ҮҮ? (2025.12.05 FRIDAY)
     const dateMatch = text.match(/^\s*(\d{4}[.\-]\d{2}[.\-]\d{2})(?:\s+\S+)?\s*$/);
@@ -450,13 +454,9 @@ bot.on('text', async (ctx, next) => {
 bot.on('photo', async (ctx) => {
   try {
     const chatId = String(ctx.chat.id);
-    const msgId = ctx.message.message_id;
     const caption = (ctx.message.caption || '').trim();
 
     if (!caption) return;
-
-    if (state.lastMsgId[chatId] === msgId) return;
-    state.lastMsgId[chatId] = msgId;
 
     // 1) ОГНОО CAPTION ҮҮ? (2025.12.05 FRIDAY)
     const dateMatch = caption.match(/^\s*(\d{4}[.\-]\d{2}[.\-]\d{2})(?:\s+\S+)?\s*$/);
