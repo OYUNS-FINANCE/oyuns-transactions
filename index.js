@@ -1,15 +1,16 @@
 const { Telegraf } = require('telegraf');
 const { google } = require('googleapis');
 const path = require('path');
-const http = require('http'); // Render-д зориулсан жижиг HTTP server
+const http = require('http'); // Render / uptime-д зориулсан жижиг HTTP server
 
-// === ЗӨВШӨӨРӨГДСӨН ЧАТУУДЫН ЖАГСААЛТ (WHITELIST) ====
+// === ЗӨВШӨӨРӨГДСӨН ЧАТУУД (WHITELIST) ===
 // Анужин хувийн чат: 1920453419
-// Группийн chat ID: -1003019837728
+// Нэг найзын чат:   1447446407
+// Групп чат:        -1003019837728
 const ALLOWED_CHAT_IDS = [
   '1920453419',
   '1447446407',
-  '-1003019837728',
+  '-1003019837728'
 ];
 
 // === ТОХИРУУЛГА ===
@@ -23,7 +24,7 @@ const credentialsPath = path.resolve('./service-account.json');
 
 const auth = new google.auth.GoogleAuth({
   keyFile: credentialsPath,
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  scopes: ['https://www.googleapis.com/auth/spreadsheets']
 });
 
 const sheets = google.sheets({ version: 'v4', auth });
@@ -42,7 +43,7 @@ bot.catch((err, ctx) => {
 
 // Чат бүрийн төлөв
 const state = {
-  currentDate: {}, // chatId -> date string (2025.12.05)
+  currentDate: {} // chatId -> date string (2025.12.05)
 };
 
 // === WHITELIST MIDDLEWARE (НИЙТД НЭГ УДАА) ===
@@ -84,8 +85,8 @@ function extractAmountForExpense(text) {
   const m = text.match(/Сумма:\s*([\d\s\.,]+)/i);
   if (!m) return '';
   let s = m[1].trim();
-  s = s.replace(/\s+/g, '');  // бүх зай
-  s = s.replace(/,/g, '');    // бүх комма-г авна → 3315696.00
+  s = s.replace(/\s+/g, ''); // бүх зай
+  s = s.replace(/,/g, '');   // бүх комма-г авна → 3315696.00
   const num = parseFloat(s);
   return isNaN(num) ? '' : num;
 }
@@ -94,7 +95,7 @@ function extractAmountForExpense(text) {
 async function getAllRows() {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A:G`,
+    range: `${SHEET_NAME}!A:G`
   });
   const rows = res.data.values || [];
   return rows;
@@ -102,23 +103,16 @@ async function getAllRows() {
 
 // Мөр нэмэх (default статус: Хүлээгдэж буй), мөрийн дугаар буцаана
 async function appendTransactionRow(date, number, description, amount, status = 'Хүлээгдэж буй') {
-  // Одоогийн мөрүүдийн тоог авах
-  const rows = await getAllRows();
-  const rowIndex = rows.length + 1; // 1-based (шинэ мөрний индекс)
-
   const timestamp = new Date().toISOString();
-  await sheets.spreadsheets.values.append({
+
+  const res = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${SHEET_NAME}!A:G`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
-      values: [[number, date, description, amount, '', timestamp, status]],
-    },
+      values: [[number, date, description, amount, '', timestamp, status]]
+    }
   });
-
-  // Бид өөрсдөө шинэ мөрийн индексийг тооцож байгаа
-  return rowIndex;
-}
 
   // Google Sheets API буцааж өгдөг range-ээс мөрийн дугаар авах (ж: 'Transactions!A15:G15')
   let rowIndex = null;
@@ -147,7 +141,7 @@ async function updateRateForDate(date, rate) {
       const rowIndex = i + 1; // 1-based
       updates.push({
         range: `${SHEET_NAME}!E${rowIndex}`,
-        values: [[rate]],
+        values: [[rate]]
       });
     }
   }
@@ -158,8 +152,8 @@ async function updateRateForDate(date, rate) {
     spreadsheetId: SPREADSHEET_ID,
     requestBody: {
       valueInputOption: 'USER_ENTERED',
-      data: updates,
-    },
+      data: updates
+    }
   });
 }
 
@@ -171,8 +165,8 @@ async function updateStatus(rowIndex, statusText) {
     range: `${SHEET_NAME}!G${rowIndex}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
-      values: [[statusText]],
-    },
+      values: [[statusText]]
+    }
   });
 }
 
@@ -236,7 +230,7 @@ bot.command('successful', async (ctx) => {
 
     if (!currentDate) {
       await ctx.reply(
-        'Эхлээд ямар огнооны гүйлгээг харахаа оруулна уу. Жишээ: 2025.12.05 FRIDAY',
+        'Эхлээд ямар огнооны гүйлгээг харахаа оруулна уу. Жишээ: 2025.12.05 FRIDAY'
       );
       return;
     }
@@ -282,7 +276,7 @@ bot.command('canceled', async (ctx) => {
 
     if (!currentDate) {
       await ctx.reply(
-        'Эхлээд ямар огнооны гүйлгээг харахаа оруулна уу. Жишээ: 2025.12.05 FRIDAY',
+        'Эхлээд ямар огнооны гүйлгээг харахаа оруулна уу. Жишээ: 2025.12.05 FRIDAY'
       );
       return;
     }
@@ -328,7 +322,7 @@ bot.command('general', async (ctx) => {
 
     if (!currentDate) {
       await ctx.reply(
-        'Эхлээд ямар огнооны тоймыг харахоо оруулна уу. Жишээ: 2025.12.05 FRIDAY',
+        'Эхлээд ямар огнооны тоймыг харахоо оруулна уу. Жишээ: 2025.12.05 FRIDAY'
       );
       return;
     }
@@ -378,7 +372,7 @@ bot.on('text', async (ctx, next) => {
     const chatId = String(ctx.chat.id);
     const text = ctx.message.text.trim();
 
-    // Хэрвээ команд байвал (/loading, /general г.м) -> цааш дамжуулна
+    // Комманд байвал -> дараагийн handler руу
     if (text.startsWith('/')) {
       return next();
     }
@@ -394,7 +388,7 @@ bot.on('text', async (ctx, next) => {
 
     const currentDate = state.currentDate[chatId];
 
-    // 2) ГҮЙЛГЭЭ МЕССЕЖ ҮҮ? ("Назначение:" + "Сумма:" хоёулаа байх ёстой)
+    // 2) ГҮЙЛГЭЭ МЕССЕЖ ҮҮ? ("Назначение:" + "Сумма:")
     const hasPurpose = /Назначение:/i.test(text);
     const hasAmount = /Сумма:/i.test(text);
 
@@ -404,26 +398,21 @@ bot.on('text', async (ctx, next) => {
         return;
       }
 
-      const number = extractNumber(text); // 1., 2), 3 гэх мэт
-      const description = extractDescription(text); // Назначение: ... (Сумма хүртэл)
-      const amount = extractAmountForExpense(text); // 3,315,696.00 -> 3315696.00
+      const number = extractNumber(text);
+      const description = extractDescription(text);
+      const amount = extractAmountForExpense(text);
 
-      const rowIndex = await appendTransactionRow(
-        currentDate,
-        number,
-        description,
-        amount,
-      );
+      const rowIndex = await appendTransactionRow(currentDate, number, description, amount);
 
       await ctx.reply(`Гүйлгээг бүртгэлээ.\n\n${text}`, {
         reply_markup: {
           inline_keyboard: [
             [
               { text: '✅', callback_data: `status:SUCCESS:${rowIndex}` },
-              { text: '❌', callback_data: `status:CANCELED:${rowIndex}` },
-            ],
-          ],
-        },
+              { text: '❌', callback_data: `status:CANCELED:${rowIndex}` }
+            ]
+          ]
+        }
       });
       return;
     }
@@ -457,7 +446,7 @@ bot.on('text', async (ctx, next) => {
   }
 });
 
-// === ЗУРАГТАЙ (PHOTO) МЕССЕЖИЙН CAPTION-ЫГ БАС АЖИЛЛУУЛНА ===
+// === ЗУРАГТАЙ (PHOTO) МЕССЕЖ — CAPTION-ААР НЬ ТАНИНА ===
 bot.on('photo', async (ctx) => {
   try {
     const chatId = String(ctx.chat.id);
@@ -490,22 +479,17 @@ bot.on('photo', async (ctx) => {
       const description = extractDescription(caption);
       const amount = extractAmountForExpense(caption);
 
-      const rowIndex = await appendTransactionRow(
-        currentDate,
-        number,
-        description,
-        amount,
-      );
+      const rowIndex = await appendTransactionRow(currentDate, number, description, amount);
 
       await ctx.reply(`Гүйлгээг бүртгэлээ (зурагтай).\n\n${caption}`, {
         reply_markup: {
           inline_keyboard: [
             [
               { text: '✅', callback_data: `status:SUCCESS:${rowIndex}` },
-              { text: '❌', callback_data: `status:CANCELED:${rowIndex}` },
-            ],
-          ],
-        },
+              { text: '❌', callback_data: `status:CANCELED:${rowIndex}` }
+            ]
+          ]
+        }
       });
       return;
     }
@@ -578,7 +562,7 @@ bot.on('callback_query', async (ctx) => {
   }
 });
 
-// === Render-д зориулсан ЖИЖИГ HTTP SERVER (PORT BINDING) ===
+// === Render / Uptime-д зориулсан ЖИЖИГ HTTP SERVER ===
 const PORT = process.env.PORT || 3000;
 
 http.createServer((req, res) => {
