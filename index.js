@@ -52,6 +52,19 @@ const state = {
   lastMsgId: {},   // chatId -> last message_id
 };
 
+const bot = new Telegraf(BOT_TOKEN);
+
+// ==== ГЛОБАЛ АЛДАА БАРИГЧ ====
+bot.catch((err, ctx) => {
+  console.error('Telegraf error:', err);
+});
+
+// Чат бүрийн төлөв
+const state = {
+  currentDate: {}, 
+  lastMsgId: {}
+};
+
 // === ТУСЛАХ ФУНКЦУУД ===
 
 // № авах — эхний хоосон биш мөрөөс (жишээ: "1." эсвэл "1)")
@@ -572,3 +585,7 @@ bot.on('callback_query', async (ctx) => {
 // === БОТЫГ АСГАХ ===
 bot.launch();
 console.log('Bot started...');
+
+bot.launch();
+console.log('Bot started...');
+
