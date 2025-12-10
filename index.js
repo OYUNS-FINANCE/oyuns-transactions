@@ -329,7 +329,7 @@ bot.command('loading', async (ctx) => {
       return;
     }
 
-    let msg = '<b>Хүлээгдэж буй гүйлгээнүүд:</b>\n\n';
+    let msg = '<b>МНТ хүлээгдэж буй гүйлгээнүүд:</b>\n\n';
     pending.forEach((r, idx) => {
       const no = r[0] || '';
       const date = r[1] || '';
@@ -561,27 +561,75 @@ async function processMessage(ctx, text) {
       return true;
     }
 
-    // 3) ӨРТӨГ ХАНШ МЕССЕЖ ҮҮ?
-    if (text.startsWith('Өртөг ханш')) {
-      if (!currentDate) {
-        await ctx.reply('Эхлээд огноо оруулна уу.');
-        return true;
-      }
+   // 3) ӨРТӨГ ХАНШ — ДЭЭРХ №-Д ТУСГАЙ ХАНШ ОНООХ
+if (text.startsWith('Өртөг ханш')) {
+  if (!currentDate) {
+    await ctx.reply('Эхлээд огноо оруулна уу.');
+    return true;
+  }
 
-      const rateMatch = text.match(/Өртөг ханш[:\s]+([\d\.,]+)/i);
-      if (!rateMatch) {
-        await ctx.reply('Зөв формат: Өртөг ханш: 46,40');
-        return true;
-      }
+  /*
+    3 формат дэмжинэ:
+    1) Өртөг ханш: 46.10
+    2) Өртөг ханш: 3-6: 46.10
+    3) Өртөг ханш: 1-2: 45.80
+  */
 
-      let rateStr = rateMatch[1].replace(/\s+/g, '').replace(',', '.');
-      const updated = await updateRateForDate(currentDate, rateStr);
-      await ctx.reply(`Өртөг ханш ${rateStr} гэж тохирууллаа (${updated} мөр) ✅`);
+  // 3-6: 46.10 гэх мэт эсэхийг шалгах
+  const rangeMatch = text.match(/Өртөг ханш[:\s]+(\d+)\s*-\s*(\d+)\s*[:\s]+([\d\.,]+)/i);
+  
+  if (rangeMatch) {
+    const startNo = parseInt(rangeMatch[1]);
+    const endNo = parseInt(rangeMatch[2]);
+    let rate = rangeMatch[3].replace(',', '.');
+
+    const rows = await getAllRows(false);
+    const updates = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const date = row[1];
+      const no = parseInt(row[0]);
+
+      if (date === currentDate && no >= startNo && no <= endNo) {
+        const rowIndex = i + 1;
+        updates.push({
+          range: `${SHEET_NAME}!E${rowIndex}`,
+          values: [[rate]]
+        });
+      }
+    }
+
+    if (updates.length === 0) {
+      await ctx.reply(`Тухайн огноонд №${startNo}-${endNo} гүйлгээ олдсонгүй.`);
       return true;
     }
 
-    return false;
-  });
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: updates
+      }
+    });
+
+    invalidateCache();
+
+    await ctx.reply(`Өртөг ханш №${startNo}-${endNo} гүйлгээд ${rate} гэж тохирууллаа. ✅`);
+    return true;
+  }
+
+  // Энгийн формат: Өртөг ханш: 46.10
+  const simpleMatch = text.match(/Өртөг ханш[:\s]+([\d\.,]+)/i);
+  if (simpleMatch) {
+    let rate = simpleMatch[1].replace(',', '.');
+    const updated = await updateRateForDate(currentDate, rate);
+    await ctx.reply(`Өртөг ханш ${rate} гэж бүх гүйлгээд тохирууллаа (${updated} мөр) ✅`);
+    return true;
+  }
+
+  await ctx.reply('❗ Зөв формат: \nӨртөг ханш: 46.10 \nэсвэл\nӨртөг ханш: 3-6: 46.10');
+  return true;
 }
 
 // === ТЕКСТ МЕССЕЖ ===
