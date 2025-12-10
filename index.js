@@ -38,7 +38,6 @@ bot.catch((err, ctx) => {
 });
 
 // === САЙЖРУУЛСАН STATE MANAGEMENT ===
-// Чат бүрд хадгалах мэдээлэл
 class ChatState {
   constructor() {
     this.states = new Map(); // chatId -> { currentDate, processingLock }
@@ -63,15 +62,14 @@ class ChatState {
     return this.getState(chatId).currentDate;
   }
 
-  // Processing lock - давхар мессеж боловсруулахаас сэргийлэх
+  // Давхар мессеж боловсруулахаас сэргийлэх
   async withLock(chatId, fn) {
     const state = this.getState(chatId);
-    
-    // Хэрэв аль хэдийн боловсруулж байгаа бол хүлээнэ
+
     while (state.processingLock) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     state.processingLock = true;
     try {
       return await fn();
@@ -84,7 +82,6 @@ class ChatState {
 const chatState = new ChatState();
 
 // === SHEETS LOCK МЕХАНИЗМ ===
-// Нэгэн зэрэг олон бичилт хийхээс сэргийлэх
 class SheetsLock {
   constructor() {
     this.locked = false;
@@ -174,7 +171,7 @@ const CACHE_DURATION = 2000; // 2 секунд
 
 async function getAllRows(useCache = true) {
   const now = Date.now();
-  
+
   if (useCache && rowsCache && (now - cacheTime) < CACHE_DURATION) {
     return rowsCache;
   }
@@ -183,10 +180,10 @@ async function getAllRows(useCache = true) {
     spreadsheetId: SPREADSHEET_ID,
     range: `${SHEET_NAME}!A:G`
   });
-  
+
   rowsCache = res.data.values || [];
   cacheTime = now;
-  
+
   return rowsCache;
 }
 
@@ -221,7 +218,7 @@ async function appendTransactionRow(date, number, description, amount, status = 
       }
     }
 
-    // Fallback: хэрвээ updatedRange байхгүй бол A баганын мөрийн тоогоор rowIndex тодорхойлно
+    // Fallback: updatedRange байхгүй бол A баганын уртаар тооцно
     if (!rowIndex) {
       try {
         const rowsRes = await sheets.spreadsheets.values.get({
@@ -229,7 +226,7 @@ async function appendTransactionRow(date, number, description, amount, status = 
           range: `${SHEET_NAME}!A:A`
         });
         const rows = rowsRes.data.values || [];
-        rowIndex = rows.length; // header + бүх мөр
+        rowIndex = rows.length;
         console.log(`⚠️ Fallback: rowIndex = ${rowIndex}`);
       } catch (err) {
         console.error('Error in fallback rowIndex calculation:', err);
@@ -240,24 +237,35 @@ async function appendTransactionRow(date, number, description, amount, status = 
   });
 }
 
-// Огноо таарч байгаа мөрүүдийн E баганад ханш бичих
-async function updateRateForDate(date, rate) {
+// Огноо + № range-тай өртөг ханш шинэчлэх
+async function updateRateForDate(date, rate, fromNo = null, toNo = null) {
   return await sheetsLock.withLock(async () => {
     const rows = await getAllRows(false); // fresh data
-    if (rows.length < 2) return;
+    if (rows.length < 2) return 0;
 
     const updates = [];
+
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const rowDate = row[1];
       const currentRate = row[4];
-      if (rowDate === date && (!currentRate || currentRate === '')) {
-        const rowIndex = i + 1;
-        updates.push({
-          range: `${SHEET_NAME}!E${rowIndex}`,
-          values: [[rate]]
-        });
+
+      if (rowDate !== date) continue;
+      if (currentRate && currentRate !== '') continue; // зөвхөн хоосон E
+
+      // Хэрэв № range заасан бол шалгана
+      if (fromNo !== null && toNo !== null) {
+        const noStr = row[0];
+        const no = parseInt(noStr, 10);
+        if (isNaN(no)) continue;
+        if (no < fromNo || no > toNo) continue;
       }
+
+      const rowIndex = i + 1;
+      updates.push({
+        range: `${SHEET_NAME}!E${rowIndex}`,
+        values: [[rate]]
+      });
     }
 
     if (updates.length === 0) return 0;
@@ -278,7 +286,7 @@ async function updateRateForDate(date, rate) {
 // Статус бичих
 async function updateStatus(rowIndex, statusText) {
   if (!rowIndex) return;
-  
+
   return await sheetsLock.withLock(async () => {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
@@ -288,7 +296,7 @@ async function updateStatus(rowIndex, statusText) {
         values: [[statusText]]
       }
     });
-    
+
     invalidateCache();
   });
 }
@@ -349,16 +357,13 @@ bot.command('loading', async (ctx) => {
 bot.command('successful', async (ctx) => {
   try {
     const chatId = String(ctx.chat.id);
-    
-    // Командын дараах текст авах
+
     const args = ctx.message.text.split(/\s+/).slice(1);
     let targetDate;
-    
+
     if (args.length > 0) {
-      // Огноо командын дараа байвал түүнийг ашиглах
       targetDate = args[0].replace(/-/g, '.');
     } else {
-      // Огноо байхгүй бол сүүлийн тохируулсан огноо ашиглах
       targetDate = chatState.getDate(chatId);
     }
 
@@ -404,16 +409,13 @@ bot.command('successful', async (ctx) => {
 bot.command('canceled', async (ctx) => {
   try {
     const chatId = String(ctx.chat.id);
-    
-    // Командын дараах текст авах
+
     const args = ctx.message.text.split(/\s+/).slice(1);
     let targetDate;
-    
+
     if (args.length > 0) {
-      // Огноо командын дараа байвал түүнийг ашиглах
       targetDate = args[0].replace(/-/g, '.');
     } else {
-      // Огноо байхгүй бол сүүлийн тохируулсан огноо ашиглах
       targetDate = chatState.getDate(chatId);
     }
 
@@ -459,16 +461,13 @@ bot.command('canceled', async (ctx) => {
 bot.command('general', async (ctx) => {
   try {
     const chatId = String(ctx.chat.id);
-    
-    // Командын дараах текст авах
+
     const args = ctx.message.text.split(/\s+/).slice(1);
     let targetDate;
-    
+
     if (args.length > 0) {
-      // Огноо командын дараа байвал түүнийг ашиглах
       targetDate = args[0].replace(/-/g, '.');
     } else {
-      // Огноо байхгүй бол сүүлийн тохируулсан огноо ашиглах
       targetDate = chatState.getDate(chatId);
     }
 
@@ -561,75 +560,51 @@ async function processMessage(ctx, text) {
       return true;
     }
 
-   // 3) ӨРТӨГ ХАНШ — ДЭЭРХ №-Д ТУСГАЙ ХАНШ ОНООХ
-if (text.startsWith('Өртөг ханш')) {
-  if (!currentDate) {
-    await ctx.reply('Эхлээд огноо оруулна уу.');
-    return true;
-  }
-
-  /*
-    3 формат дэмжинэ:
-    1) Өртөг ханш: 46.10
-    2) Өртөг ханш: 3-6: 46.10
-    3) Өртөг ханш: 1-2: 45.80
-  */
-
-  // 3-6: 46.10 гэх мэт эсэхийг шалгах
-  const rangeMatch = text.match(/Өртөг ханш[:\s]+(\d+)\s*-\s*(\d+)\s*[:\s]+([\d\.,]+)/i);
-  
-  if (rangeMatch) {
-    const startNo = parseInt(rangeMatch[1]);
-    const endNo = parseInt(rangeMatch[2]);
-    let rate = rangeMatch[3].replace(',', '.');
-
-    const rows = await getAllRows(false);
-    const updates = [];
-
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const date = row[1];
-      const no = parseInt(row[0]);
-
-      if (date === currentDate && no >= startNo && no <= endNo) {
-        const rowIndex = i + 1;
-        updates.push({
-          range: `${SHEET_NAME}!E${rowIndex}`,
-          values: [[rate]]
-        });
+    // 3) ӨРТӨГ ХАНШ МЕССЕЖ ҮҮ?
+    if (text.startsWith('Өртөг ханш')) {
+      if (!currentDate) {
+        await ctx.reply('Эхлээд огноо оруулна уу.');
+        return true;
       }
-    }
 
-    if (updates.length === 0) {
-      await ctx.reply(`Тухайн огноонд №${startNo}-${endNo} гүйлгээ олдсонгүй.`);
+      // Эхлээд range + rate (ж: Өртөг ханш: 3-6: 46,10)
+      let fromNo = null;
+      let toNo = null;
+      let rateStr = null;
+
+      const rangeMatch = text.match(/Өртөг ханш[:\s]+(\d+)\s*-\s*(\d+)[:\s]+([\d\.,]+)/i);
+      if (rangeMatch) {
+        fromNo = parseInt(rangeMatch[1], 10);
+        toNo = parseInt(rangeMatch[2], 10);
+        rateStr = rangeMatch[3];
+      } else {
+        // Зөвхөн rate (ж: Өртөг ханш: 46,10)
+        const rateOnlyMatch = text.match(/Өртөг ханш[:\s]+([\d\.,]+)/i);
+        if (rateOnlyMatch) {
+          rateStr = rateOnlyMatch[1];
+        }
+      }
+
+      if (!rateStr) {
+        await ctx.reply('Зөв формат: Өртөг ханш: 46,40 эсвэл Өртөг ханш: 3-6: 46,40');
+        return true;
+      }
+
+      rateStr = rateStr.replace(/\s+/g, '').replace(',', '.');
+
+      const updated = await updateRateForDate(currentDate, rateStr, fromNo, toNo);
+
+      if (fromNo !== null && toNo !== null) {
+        await ctx.reply(`Өртөг ханш №${fromNo}-${toNo}-д ${rateStr} гэж тохирууллаа (${updated} мөр) ✅`);
+      } else {
+        await ctx.reply(`Өртөг ханш ${rateStr} гэж тохирууллаа (${updated} мөр) ✅`);
+      }
+
       return true;
     }
 
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
-      requestBody: {
-        valueInputOption: 'USER_ENTERED',
-        data: updates
-      }
-    });
-
-    invalidateCache();
-
-    await ctx.reply(`Өртөг ханш №${startNo}-${endNo} гүйлгээд ${rate} гэж тохирууллаа. ✅`);
-    return true;
-  }
-
-  // Энгийн формат: Өртөг ханш: 46.10
-  const simpleMatch = text.match(/Өртөг ханш[:\s]+([\d\.,]+)/i);
-  if (simpleMatch) {
-    let rate = simpleMatch[1].replace(',', '.');
-    const updated = await updateRateForDate(currentDate, rate);
-    await ctx.reply(`Өртөг ханш ${rate} гэж бүх гүйлгээд тохирууллаа (${updated} мөр) ✅`);
-    return true;
-  }
-
-  await ctx.reply('❗ Зөв формат: \nӨртөг ханш: 46.10 \nэсвэл\nӨртөг ханш: 3-6: 46.10');
-  return true;
+    return false;
+  });
 }
 
 // === ТЕКСТ МЕССЕЖ ===
@@ -637,7 +612,6 @@ bot.on('text', async (ctx, next) => {
   try {
     const text = ctx.message.text.trim();
 
-    // Комманд байвал -> дараагийн handler руу
     if (text.startsWith('/')) {
       return next();
     }
@@ -694,15 +668,11 @@ bot.on('callback_query', async (ctx) => {
 
     try {
       await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    } catch (e) {
-      // Товчийг устгаж чадахгүй бол дуугүй үргэлжлүүлнэ
-    }
+    } catch (e) {}
 
     try {
       await ctx.deleteMessage();
-    } catch (e) {
-      // Мессежийг устгаж чадахгүй бол дуугүй үргэлжлүүлнэ
-    }
+    } catch (e) {}
   } catch (err) {
     console.error('Error in callback_query:', err);
     try {
