@@ -685,7 +685,7 @@ bot.action(/confirm_partial_(.+)/, async (ctx) => {
     await ctx.answerCbQuery();
     state.step = 'waiting_partial_mnt';
 
-    await ctx.reply('💸 <b>Ороод ирсэн MNT дүнг оруулна уу:</b>', {
+    await ctx.reply('💸 <b>Хүлээн авсан MNT дүнг оруулна уу:</b>', {
       parse_mode: 'HTML',
       reply_to_message_id: state.calcMessageId || state.txMessageId,
     });
@@ -750,7 +750,9 @@ bot.command('report', async (ctx) => {
 
         // copy/paste бэлэн формат
         report += `№${escapeHtml(t.number)}\n`;
+
         report += `Назначение: ${escapeHtml(t.назначение)}\n`;
+
         report += `Үлдэгдэл тооцоо: <code>${formatNumber(t.mntRemaining)} MNT</code>\n\n`;
       }
 
