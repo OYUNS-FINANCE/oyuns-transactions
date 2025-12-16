@@ -4,37 +4,25 @@ const http = require('http');
 
 // ========== CONFIG ==========
 const CONFIG = {
-  BOT_TOKEN: process.env.BOT_TOKEN
-  SPREADSHEET_ID: process.env.SPREADSHEET_ID
+  BOT_TOKEN: process.env.BOT_TOKEN,
+  SPREADSHEET_ID: process.env.SPREADSHEET_ID,
   RATE_CHANNEL_ID: '-1003355216653',
   ALLOWED_GROUP_ID: -5069100118,
   ADMIN_IDS: [1447446407, 1920453419],
-  PORT: process.env.PORT 
-  
-  GOOGLE_CREDENTIALS: {
-    "type": "service_account",
-    "project_id": "your-project-id",
-    "private_key_id": "your-private-key-id",
-    "private_key": "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----\n",
-    "client_email": "your-service-account@your-project.iam.gserviceaccount.com",
-    "client_id": "your-client-id",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "your-cert-url"
-  }
+  PORT: process.env.PORT || 3000
 };
 
 const bot = new Telegraf(CONFIG.BOT_TOKEN);
 
 // ========== GOOGLE SHEETS ==========
 const auth = new google.auth.GoogleAuth({
-  credentials: CONFIG.GOOGLE_CREDENTIALS,
+  keyFile: '/etc/secrets/service-account.json',
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
 const sheets = google.sheets({ version: 'v4', auth });
 const SHEET_NAME = 'Transactions2';
+
 
 let sheetsLock = Promise.resolve();
 const lockSheets = (fn) => {
