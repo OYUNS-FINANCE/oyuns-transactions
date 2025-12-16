@@ -4,14 +4,12 @@ const http = require('http');
 
 // ========== CONFIG ==========
 const CONFIG = {
-  BOT_TOKEN: process.env.BOT_TOKEN || '7716759809:AAHRwI4cgQJd8KXcJcHbQVw2FZFueBja1G0
-',
-  SPREADSHEET_ID: process.env.SPREADSHEET_ID || '1qbxJsI4Ns3a8lluxlRZl5r5AKHA3hp9yS7YZLwY469A
-',
+  BOT_TOKEN: process.env.BOT_TOKEN
+  SPREADSHEET_ID: process.env.SPREADSHEET_ID
   RATE_CHANNEL_ID: '-1003355216653',
   ALLOWED_GROUP_ID: -5069100118,
   ADMIN_IDS: [1447446407, 1920453419],
-  PORT: process.env.PORT || 3000,
+  PORT: process.env.PORT 
   
   GOOGLE_CREDENTIALS: {
     "type": "service_account",
