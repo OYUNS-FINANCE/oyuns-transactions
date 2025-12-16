@@ -255,6 +255,12 @@ bot.on('text', async (ctx) => {
     const text = ctx.message.text;
 
     if (text.startsWith('/')) return;
+    
+    // Зураг эсвэл бусад media-тай ирсэн caption алгасах
+    if (ctx.message.photo || ctx.message.video || ctx.message.document || ctx.message.audio) {
+      console.log('📎 Media caption алгасах');
+      return;
+    }
 
     // 1) ШИНЭ ГҮЙЛГЭЭ - "назначение" болон "сумма" гэсэн үг орсон бол таних
     const numberMatch = text.match(/^(\d+)\./m);
@@ -275,24 +281,45 @@ bot.on('text', async (ctx) => {
         startedAt: new Date().toISOString()
       });
 
-      await ctx.reply('💰 <b>Өртөг ханш оруулна уу:</b>', {
+      await ctx.reply('💰 <b>Өртөг ханш оруулна уу:</b>\n\n<i>👆 Дээрх мессежид reply хийж бичнэ үү</i>', {
         reply_to_message_id: messageId, parse_mode: 'HTML'
       });
       return;
     }
 
-    // 2) REPLY ХАРИУЛТ
-    const activeState = findActiveState(chatId);
+    // 2) REPLY эсвэл ИДЭВХТЭЙ STATE шалгах
+    let activeState = null;
+    
+    // Эхлээд reply хийсэн эсэхийг шалгах
+    if (ctx.message.reply_to_message) {
+      const replyToId = ctx.message.reply_to_message.message_id;
+      activeState = findStateByTxId(chatId, replyToId);
+    }
+    
+    // Reply хийгээгүй бол идэвхтэй state хайх (зарим step-д reply заавал биш)
+    if (!activeState) {
+      activeState = findActiveState(chatId);
+    }
+    
     if (!activeState) return;
 
+    // ӨРТӨГ ХАНШ - Reply хийх шаардлагатай
     if (activeState.step === 'waiting_cost_rate') {
+      if (!ctx.message.reply_to_message) {
+        await ctx.reply('⚠️ <b>Гүйлгээний мессежид reply хийж өртөг ханш оруулна уу!</b>', { 
+          parse_mode: 'HTML',
+          reply_to_message_id: activeState.txMessageId
+        });
+        return;
+      }
+      
       const costRate = parseNumber(text);
       if (costRate > 0) {
         activeState.costRate = costRate;
         activeState.step = 'waiting_sell_rate';
         
         const rates = await fetchLatestRates();
-        await ctx.reply('📊 <b>Зарах ханш сонгоно уу:</b>', {
+        await ctx.reply('📊 <b>Зарах ханш сонгоно уу:</b>\n\n<i>💡 Товч дарж сонгох эсвэл тоог бичнэ үү</i>', {
           reply_to_message_id: activeState.txMessageId, parse_mode: 'HTML',
           ...Markup.inlineKeyboard([
             [
@@ -302,29 +329,47 @@ bot.on('text', async (ctx) => {
             [Markup.button.callback('✍️ Өөр ханш оруулах', `rate_custom_${activeState.txMessageId}`)]
           ])
         });
+      } else {
+        await ctx.reply('❌ <b>Зөв тоо оруулна уу!</b>', { 
+          parse_mode: 'HTML', 
+          reply_to_message_id: messageId 
+        });
       }
       return;
     }
 
+    // ЗАРАХ ХАНШ (custom) - Зүгээр бичиж болно
     if (activeState.step === 'waiting_custom_rate') {
       const customRate = parseNumber(text);
       if (customRate > 0) {
         activeState.rate = customRate;
         activeState.rateType = 'Өөр';
         await processCommission(ctx, activeState);
+      } else {
+        await ctx.reply('❌ <b>Зөв ханш оруулна уу!</b>', { 
+          parse_mode: 'HTML', 
+          reply_to_message_id: activeState.txMessageId 
+        });
       }
       return;
     }
 
+    // ШИМТГЭЛ - Зүгээр бичиж болно
     if (activeState.step === 'waiting_commission') {
       const commission = parseNumber(text);
       if (commission > 0) {
         activeState.commission = commission;
         await showCalculation(ctx, activeState);
+      } else {
+        await ctx.reply('❌ <b>Зөв дүн оруулна уу!</b>', { 
+          parse_mode: 'HTML', 
+          reply_to_message_id: activeState.calcMessageId || activeState.txMessageId
+        });
       }
       return;
     }
 
+    // ХЭСЭГЧИЛСЭН MNT - Зүгээр бичиж болно
     if (activeState.step === 'waiting_partial_mnt') {
       const mnt = parseNumber(text);
       if (mnt > 0) {
@@ -342,7 +387,10 @@ bot.on('text', async (ctx) => {
         
         const calc = formatCalculation(activeState.rub, activeState.commission, activeState.rubTotal, activeState.rate, activeState.mntTotal, activeState.mntReceived);
         
-        await ctx.reply(`✅ <b>Хэсэгчлэн орлоо:</b> ${formatNumber(mnt)} MNT\n\n${calc}`, { parse_mode: 'HTML' });
+        await ctx.reply(`✅ <b>Хэсэгчлэн орлоо:</b> ${formatNumber(mnt)} MNT\n\n${calc}`, { 
+          parse_mode: 'HTML',
+          reply_to_message_id: activeState.txMessageId 
+        });
         
         if (activeState.mntRemaining <= 0) {
           const completedAt = new Date().toISOString();
@@ -352,8 +400,30 @@ bot.on('text', async (ctx) => {
             await updateTransaction(rowNum, { 'completedAt': completedAt, 'minutes': minutes, 'status': 'Амжилттай' });
           }
           
-          await ctx.reply('🎉 <b>Гүйлгээ амжилттай хаагдлаа!</b>', { parse_mode: 'HTML' });
+          await ctx.reply('🎉 <b>Гүйлгээ амжилттай хаагдлаа!</b>', { 
+            parse_mode: 'HTML',
+            reply_to_message_id: activeState.txMessageId 
+          });
           transactionStates.delete(`${chatId}_${activeState.txMessageId}`);
+        } else {
+          activeState.step = 'waiting_confirmation';
+          await ctx.reply('💵 <b>MNT бүтэн орсон уу?</b>', {
+            parse_mode: 'HTML',
+            reply_to_message_id: activeState.txMessageId,
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('✅ Бүтэн орсон', `confirm_full_${activeState.txMessageId}`)],
+              [Markup.button.callback('🟠 Дахин хэсэгчлэн орсон', `confirm_partial_${activeState.txMessageId}`)]
+            ])
+          });
+        }
+      } else {
+        await ctx.reply('❌ <b>Зөв дүн оруулна уу!</b>', { 
+          parse_mode: 'HTML', 
+          reply_to_message_id: messageId 
+        });
+      }
+      return;
+    }activeState.txMessageId}`);
         } else {
           activeState.step = 'waiting_confirmation';
           await ctx.reply('💵 <b>MNT бүтэн орсон уу?</b>', {
@@ -393,11 +463,23 @@ bot.action(/rate_(org|person|custom)_(.+)/, async (ctx) => {
       state.rateType = 'Хувь хүн';
       await ctx.answerCbQuery('👤 Сонгогдлоо');
       await processCommission(ctx, state);
-    } else {
-      state.step = 'waiting_custom_rate';
-      await ctx.answerCbQuery();
-      await ctx.reply('✍️ <b>Зарах ханш оруулна уу:</b>', { parse_mode: 'HTML', reply_to_message_id: state.txMessageId });
-    }
+bot.action(/rate_custom_(.+)/, async (ctx) => {
+  try {
+    if (!isUserAllowed(ctx)) return;
+    
+    const state = findStateByTxId(ctx.chat.id, ctx.match[1]);
+    if (!state) return;
+    
+    state.step = 'waiting_custom_rate';
+    await ctx.answerCbQuery();
+    await ctx.reply('✍️ <b>Зарах ханш оруулна уу:</b>\n\n<i>💡 Зүгээр бичиж илгээнэ үү</i>', { 
+      parse_mode: 'HTML', 
+      reply_to_message_id: state.txMessageId 
+    });
+  } catch (err) {
+    console.error('❌ Rate custom error:', err);
+  }
+});
   } catch (err) {
     console.error('❌ Rate callback error:', err);
   }
@@ -412,7 +494,10 @@ bot.action(/change_commission_(.+)/, async (ctx) => {
     
     state.step = 'waiting_commission';
     await ctx.answerCbQuery();
-    await ctx.reply('💰 <b>Шимтгэл оруулна уу:</b>', { parse_mode: 'HTML', reply_to_message_id: state.calcMessageId });
+    await ctx.reply('💰 <b>Шимтгэл оруулна уу:</b>\n\n<i>💡 Зүгээр бичиж илгээнэ үү</i>', { 
+      parse_mode: 'HTML', 
+      reply_to_message_id: state.calcMessageId 
+    });
   } catch (err) {
     console.error('❌ Change commission error:', err);
   }
@@ -514,7 +599,7 @@ bot.action(/confirm_partial_(.+)/, async (ctx) => {
     
     await ctx.answerCbQuery();
     state.step = 'waiting_partial_mnt';
-    await ctx.reply('💸 <b>Ороод ирсэн MNT дүнг оруулна уу:</b>', {
+    await ctx.reply('💸 <b>Ороод ирсэн MNT дүнг оруулна уу:</b>\n\n<i>💡 Зүгээр бичиж илгээнэ үү</i>', {
       parse_mode: 'HTML', reply_to_message_id: state.calcMessageId || state.txMessageId
     });
   } catch (err) {
@@ -584,8 +669,13 @@ bot.command('debug', async (ctx) => {
 
 // ========== SERVER ==========
 const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('OYUNS Bot is running!');
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200);
+    res.end('OYUNS Bot is running!');
+  } else {
+    res.writeHead(404);
+    res.end('Not found');
+  }
 });
 
 server.listen(CONFIG.PORT, () => {
@@ -595,24 +685,98 @@ server.listen(CONFIG.PORT, () => {
 // ========== BOT LAUNCH ==========
 async function startBot() {
   try {
-    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+    console.log('🔄 Bot эхлүүлж байна...');
+    console.log(`📡 Mode: ${CONFIG.WEBHOOK_MODE ? 'Webhook' : 'Polling'}`);
     
-    await bot.launch({
-      allowedUpdates: ['message', 'callback_query', 'channel_post'],
-      dropPendingUpdates: true
-    });
+    if (CONFIG.WEBHOOK_MODE) {
+      // WEBHOOK MODE
+      if (!CONFIG.WEBHOOK_DOMAIN) {
+        throw new Error('WEBHOOK_DOMAIN байхгүй байна!');
+      }
+      
+      const webhookPath = `/bot${CONFIG.BOT_TOKEN}`;
+      const webhookUrl = `${CONFIG.WEBHOOK_DOMAIN}${webhookPath}`;
+      
+      await bot.telegram.setWebhook(webhookUrl, {
+        drop_pending_updates: true,
+        allowed_updates: ['message', 'callback_query', 'channel_post']
+      });
+      
+      console.log(`✅ Webhook тохируулагдлаа: ${webhookUrl}`);
+      
+      // Webhook handler нэмэх
+      const express = require('express');
+      const app = express();
+      app.use(express.json());
+      
+      app.post(webhookPath, (req, res) => {
+        bot.handleUpdate(req.body, res);
+      });
+      
+      app.get('/health', (req, res) => res.send('OK'));
+      app.get('/', (req, res) => res.send('OYUNS Bot is running!'));
+      
+      app.listen(CONFIG.PORT, () => {
+        console.log(`✅ Webhook server: port ${CONFIG.PORT}`);
+      });
+      
+    } else {
+      // POLLING MODE
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      console.log('✅ Webhook устгагдлаа');
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      await bot.launch({
+        allowedUpdates: ['message', 'callback_query', 'channel_post'],
+        dropPendingUpdates: true
+      });
+      
+      console.log('✅ Polling эхэллээ');
+    }
     
     console.log('✅ Bot эхэллээ!');
     console.log(`💰 Ханш: 🏦 ${cachedRates.org} | 👤 ${cachedRates.person}`);
     console.log(`📋 Allowed Group ID: ${CONFIG.ALLOWED_GROUP_ID}`);
     console.log(`👥 Admin IDs: ${CONFIG.ADMIN_IDS.join(', ')}`);
+    
   } catch (err) {
     console.error('❌ Bot launch:', err);
+    
+    if (err.response?.error_code === 409) {
+      console.log('⚠️  Өөр bot instance ажиллаж байна. 5 секунд хүлээж дахин оролдож байна...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      return startBot();
+    }
+    
     process.exit(1);
   }
 }
 
-startBot();
+// Graceful shutdown
+let isShuttingDown = false;
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+async function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  
+  console.log(`\n📴 ${signal} хүлээн авлаа. Bot зогсож байна...`);
+  
+  try {
+    if (!CONFIG.WEBHOOK_MODE) {
+      await bot.stop(signal);
+    }
+    server.close();
+    console.log('✅ Bot амжилттай зогслоо');
+    process.exit(0);
+  } catch (err) {
+    console.error('❌ Shutdown error:', err);
+    process.exit(1);
+  }
+}
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGUSR2', () => shutdown('SIGUSR2'));
+
+startBot();
