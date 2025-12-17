@@ -463,15 +463,15 @@ bot.command('report', async (ctx) => {
 
     let report = '';
     report += '📈 <b>Товч мэдээлэл:</b>\n\n';
-    report += 'Нийт гүйлгээний дүн: ' + formatMNT(totalMNT) + ' / ' + formatRUB(totalRUB) + '\n\n';
-    report += 'Нийт ашиг: ' + formatMNT(totalProfit) + '\n\n';
+    report += 'Нийт гүйлгээний дүн: ' + formatMNT(totalMNT) + ' / ' + formatRUB(totalRUB) + '\n';
+    report += 'Нийт ашиг: ' + formatMNT(totalProfit) + '\n';
     report += 'Нийт гүйлгээний тоо: ' + transactions.length + '\n\n';
 
     report += '📊 <b>Гүйлгээний төлөв:</b>\n\n';
-    report += 'Амжилттай: ' + completed.length + '\n\n';
+    report += 'Амжилттай: ' + completed.length + '\n';
     report += 'Хүлээгдэж байгаа: ' + pending.length + '\n\n';
 
-    report += '🔽<b>Алдагдалтай гүйлгээний тоо:</b> ' + lossTransactions.length + '\n\n';
+    report += '🔽<b>Алдагдалтай гүйлгээний тоо:</b> ' + lossTransactions.length + '\n';
     report += 'Алдагдлын хэмжээ: ' + formatMNT(lossSum) + '\n\n';
 
     if (pending.length > 0) {
@@ -481,7 +481,7 @@ bot.command('report', async (ctx) => {
       for (const t of pending) {
         report += idx + ') <b>Назначение:</b> ' + t.назначение + '\n\n';
         const calc = formatCalculation(t.rub, t.commission, t.rubTotal, t.rate, t.mntTotal, t.mntReceived);
-        report += '<b>Тооцоо:</b>\n\n' + calc + '\n\n';
+        report += '<b>Тооцоо:</b>\n' + calc + '\n';
         report += '<b>Үлдэгдэл:</b> ' + formatNumber(t.mntRemaining, 2) + '\n\n';
         idx++;
       }
