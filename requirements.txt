@@ -1,0 +1,7 @@
+# Deployment requirements for OYUNS Bot
+# Dependencies are managed through package.json and installed with `npm ci --omit=dev`.
+Node.js >=20
+BOT_TOKEN
+SPREADSHEET_ID
+WEBHOOK_DOMAIN (optional, fallback to polling when unset)
+Service account key mounted at /etc/secrets/service-account.json
