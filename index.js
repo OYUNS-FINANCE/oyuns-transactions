@@ -674,7 +674,7 @@ bot.on('photo', async (ctx) => {
   } catch (err) {
     console.error('Error in photo handler:', err);
     try {
-      await ctx.reply('Дотоод алдаа гарлаа (photo) 😢');
+      await ctx.reply('Дотоод алдаа гарлаа (photo)');
     } catch (e) {
       console.error('Failed to send error message:', e);
     }
