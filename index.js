@@ -177,7 +177,14 @@ function parseNumberList(str) {
 // Оригинал мессеж дээр 👍 reaction дарах
 async function reactLike(ctx) {
   try {
-    await ctx.react('👍');
+    const msgId = ctx.message?.message_id || ctx.channelPost?.message_id;
+    const chatId = ctx.chat?.id;
+    if (!msgId || !chatId) return;
+    await ctx.telegram.callApi('setMessageReaction', {
+      chat_id: chatId,
+      message_id: msgId,
+      reaction: [{ type: 'emoji', emoji: '👍' }]
+    });
   } catch (e) {
     console.error('Reaction error:', e.message || e);
   }
@@ -697,9 +704,9 @@ bot.on('photo', async (ctx) => {
     if (!caption) return;
     await processMessage(ctx, caption);
   } catch (err) {
-    console.error('Error in photo handler:', err);
+    console.error('Error in photo handler:', err?.message || err);
     try {
-      await ctx.reply('Дотоод алдаа гарлаа (photo) 😢');
+      await ctx.reply(`Дотоод алдаа гарлаа (photo) 😢\n<code>${err?.message || 'Unknown error'}</code>`, { parse_mode: 'HTML' });
     } catch (e) {
       console.error('Failed to send error message:', e);
     }
