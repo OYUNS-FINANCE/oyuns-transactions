@@ -688,9 +688,9 @@ bot.on('text', async (ctx, next) => {
 
     await processMessage(ctx, text);
   } catch (err) {
-    console.error('Error in text handler:', err);
+    console.error('Error in text handler:', err?.message || err);
     try {
-      await ctx.reply('Дотоод алдаа гарлаа 😢');
+      await ctx.reply(`Дотоод алдаа гарлаа 😢\n<code>${err?.message || 'Unknown error'}</code>`, { parse_mode: 'HTML' });
     } catch (e) {
       console.error('Failed to send error message:', e);
     }
