@@ -893,3 +893,6 @@ process.once('SIGTERM', () => {
   console.log('SIGTERM received, stopping bot...');
   bot.stop('SIGTERM');
 });
+
+
+// version test = 1.0.0
